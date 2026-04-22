@@ -229,7 +229,7 @@ const NSString * const SerFilterExprEnabled = @"enabled";
 
 #pragma mark -
 
-@interface SPRuleFilterController () <NSRuleEditorDelegate, NSTextFieldDelegate>
+@interface SPRuleFilterController () <NSRuleEditorDelegate, NSTextFieldDelegate, SPFilterRuleEditorDropHandler>
 
 @property (readwrite, assign, nonatomic) CGFloat preferredHeight;
 
@@ -331,6 +331,34 @@ static void _addIfNotNil(NSMutableArray *array, id toAdd);
 	                                         selector:@selector(_contentFiltersHaveBeenUpdated:)
 	                                             name:SPContentFiltersHaveBeenUpdatedNotification
 	                                           object:nil];
+
+	// Install the "Drop a value here, or click to add a filter" zone as a sibling
+	// of the rule-editor scroll view inside the filter container. Layout
+	// (y origin / width) is finalised by -[SPTableContent
+	// updateFilterRuleEditorSize:animate:], which now reserves
+	// `-dropBoxReservedHeight` points below the rule editor for this view.
+	if (!dropBox) {
+		dropBox = [[SPRuleFilterDropBox alloc] initWithFrame:NSZeroRect];
+		[dropBox setDropHandler:self];
+		[dropBox setAutoresizingMask:(NSViewWidthSizable | NSViewMaxYMargin)];
+	}
+	NSView *container = [[filterRuleEditor enclosingScrollView] superview];
+	if (container && [dropBox superview] != container) {
+		[container addSubview:dropBox];
+	}
+}
+
+- (SPRuleFilterDropBox *)dropBoxView
+{
+	return dropBox;
+}
+
+- (CGFloat)dropBoxReservedHeight
+{
+	// Drop box visual height (28pt) + 5pt padding above + 7pt padding
+	// below, so the dashed border has breathing room against the rule
+	// editor above and the result-grid header below.
+	return 40.0;
 }
 
 - (void)focusFirstInputField
@@ -1275,8 +1303,143 @@ static void _addIfNotNil(NSMutableArray *array, id toAdd);
 	[self _doChangeToRuleEditorData:^{
 		[self->filterRuleEditor insertRowAtIndex:0 withType:NSRuleEditorRowTypeSimple asSubrowOfRow:-1 animate:NO];
 	}];
-	
+
 	[self focusFirstInputField];
+}
+
+- (NSDictionary *)_makeSerializedRuleForColumn:(NSString *)columnName value:(NSString *)value isNull:(BOOL)isNull
+{
+	if (![columnName length]) return nil;
+	ColumnNode *col = [self _columnForName:columnName];
+	if (!col) return nil;
+
+	// Pick a sensible default operator: "IS NULL" for a NULL cell,
+	// otherwise the first single-argument operator advertised for the
+	// column's type group (already "=" for number / string / date per
+	// ContentFilters.plist, "contains" for spatial).
+	[self _ensureValidOperatorCache:col];
+	NSArray *operators = [col operatorCache];
+	OpNode *chosen = nil;
+	if (isNull) {
+		for (OpNode *op in operators) {
+			NSUInteger argc = [[[op filter] objectForKey:@"NumberOfArguments"] unsignedIntegerValue];
+			if (argc == 0 && [[[op filter] objectForKey:@"Clause"] rangeOfString:@"IS NULL" options:NSCaseInsensitiveSearch].location != NSNotFound) {
+				chosen = op;
+				break;
+			}
+		}
+	}
+	if (!chosen) {
+		for (OpNode *op in operators) {
+			NSUInteger argc = [[[op filter] objectForKey:@"NumberOfArguments"] unsignedIntegerValue];
+			if (argc == 1) { chosen = op; break; }
+		}
+	}
+	if (!chosen) chosen = [operators firstObject];
+	if (!chosen) return nil;
+
+	NSUInteger argc = [[[chosen filter] objectForKey:@"NumberOfArguments"] unsignedIntegerValue];
+	NSMutableArray *values = [NSMutableArray arrayWithCapacity:argc];
+	for (NSUInteger i = 0; i < argc; ++i) {
+		[values addObject:(value ?: @"")];
+	}
+	return [SPRuleFilterController makeSerializedFilterForColumn:[col name] operator:[chosen name] values:values];
+}
+
+- (BOOL)appendFilterForColumn:(NSString *)columnName value:(NSString *)value isNull:(BOOL)isNull
+{
+	if (![columns count]) return NO;
+	NSDictionary *newRule = [self _makeSerializedRuleForColumn:columnName value:value isNull:isNull];
+	if (!newRule) return NO;
+
+	// Merge the new rule with any existing tree under a single AND
+	// group so it can be fed to -restoreSerializedFilters:. Filtering
+	// is not kicked off – the user confirms via the Apply Filters
+	// button or by pressing Return in any argument field.
+	NSDictionary *existing = [self serializedFilter];
+	NSDictionary *combined;
+	if (!existing) {
+		combined = newRule;
+	}
+	else if (SerIsGroup(existing) && [[existing objectForKey:SerFilterGroupIsConjunction] boolValue]) {
+		NSMutableArray *children = [NSMutableArray arrayWithArray:[existing objectForKey:SerFilterGroupChildren]];
+		[children addObject:newRule];
+		combined = @{
+			(NSString *)SerFilterClass: (NSString *)SerFilterClassGroup,
+			(NSString *)SerFilterGroupIsConjunction: @YES,
+			(NSString *)SerFilterGroupChildren: children,
+		};
+	}
+	else {
+		combined = @{
+			(NSString *)SerFilterClass: (NSString *)SerFilterClassGroup,
+			(NSString *)SerFilterGroupIsConjunction: @YES,
+			(NSString *)SerFilterGroupChildren: @[existing, newRule],
+		};
+	}
+
+	[self restoreSerializedFilters:combined];
+	return YES;
+}
+
+- (BOOL)replaceFilterAtRow:(NSInteger)row forColumn:(NSString *)columnName value:(NSString *)value isNull:(BOOL)isNull
+{
+	if (row < 0 || ![columns count]) return NO;
+	NSDictionary *newRule = [self _makeSerializedRuleForColumn:columnName value:value isNull:isNull];
+	if (!newRule) return NO;
+
+	NSDictionary *existing = [self serializedFilter];
+	NSDictionary *combined;
+	if (!existing) {
+		combined = newRule;
+	}
+	else if (SerIsGroup(existing) && [[existing objectForKey:SerFilterGroupIsConjunction] boolValue]) {
+		NSArray *children = [existing objectForKey:SerFilterGroupChildren];
+		if ((NSUInteger)row >= [children count]) {
+			return NO;
+		}
+		NSMutableArray *newChildren = [NSMutableArray arrayWithArray:children];
+		[newChildren replaceObjectAtIndex:(NSUInteger)row withObject:newRule];
+		combined = @{
+			(NSString *)SerFilterClass: (NSString *)SerFilterClassGroup,
+			(NSString *)SerFilterGroupIsConjunction: @YES,
+			(NSString *)SerFilterGroupChildren: newChildren,
+		};
+	}
+	else if (row == 0) {
+		// Single-expression tree – drop index 0 replaces the whole thing.
+		combined = newRule;
+	}
+	else {
+		return NO;
+	}
+
+	[self restoreSerializedFilters:combined];
+	return YES;
+}
+
+- (void)addEmptyFilterRow
+{
+	// Click-to-add on the drop box mirrors the in-row "+" behaviour by
+	// appending at the end of the list – the drop box sits below the
+	// existing rules, so inserting at index 0 would push the new row
+	// away from the click and feel wrong. `-addFilterExpression`
+	// (backing the top-right "Add Filter" button) keeps its original
+	// insert-at-0 semantics.
+	if (![columns count]) return;
+
+	[self _doChangeToRuleEditorData:^{
+		NSInteger tailIndex = [self->filterRuleEditor numberOfRows];
+		[self->filterRuleEditor insertRowAtIndex:tailIndex withType:NSRuleEditorRowTypeSimple asSubrowOfRow:-1 animate:NO];
+	}];
+
+	// Focus the newly-inserted (last) row instead of the first, so the
+	// user can immediately start picking a column for the row they
+	// just created.
+	NSArray *model = [_modelContainer model];
+	if ([model count] > 0) {
+		[self _focusOnFieldInSubtree:[model lastObject]];
+	}
 }
 
 - (NSRuleEditor *)view
