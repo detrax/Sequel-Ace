@@ -1374,6 +1374,14 @@ static void _addIfNotNil(NSMutableArray *array, id toAdd);
 	if (!existing) {
 		combined = newRule;
 	}
+	else if (SerIsUntouchedStarterRule(existing)) {
+		// The rule editor auto-creates one empty row on open; if the
+		// user's first action is a drag, that placeholder is still
+		// present. ANDing onto it produces "firstColumn = '' AND
+		// droppedColumn = value", which isn't what the user asked for.
+		// Replace the starter outright instead.
+		combined = newRule;
+	}
 	else if (SerIsGroup(existing) && [[existing objectForKey:SerFilterGroupIsConjunction] boolValue]) {
 		NSMutableArray *children = [NSMutableArray arrayWithArray:[existing objectForKey:SerFilterGroupChildren]];
 		[children addObject:newRule];
@@ -1783,6 +1791,25 @@ fail:
 BOOL SerIsGroup(NSDictionary *dict)
 {
 	return [SerFilterClassGroup isEqual:[dict objectForKey:SerFilterClass]];
+}
+
+/**
+ * YES if @c dict is a single expression node whose argument values are
+ * all empty strings – the shape produced by the rule editor's auto-added
+ * starter row before the user has typed anything. Used by
+ * -appendFilterForColumn:... to decide whether a drop should replace the
+ * placeholder rather than AND a new rule onto it.
+ */
+static BOOL SerIsUntouchedStarterRule(NSDictionary *dict)
+{
+	if (!dict || SerIsGroup(dict)) return NO;
+	if (![SerFilterClassExpression isEqual:[dict objectForKey:SerFilterClass]]) return NO;
+	NSArray *values = [dict objectForKey:SerFilterExprValues];
+	if (![values isKindOfClass:[NSArray class]]) return NO;
+	for (id v in values) {
+		if ([v isKindOfClass:[NSString class]] && [(NSString *)v length]) return NO;
+	}
+	return YES;
 }
 
 /**

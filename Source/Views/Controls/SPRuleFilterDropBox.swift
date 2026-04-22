@@ -110,7 +110,27 @@ import Cocoa
     }
 
     override public func mouseDown(with event: NSEvent) {
-        dropHandler?.addEmptyFilterRow()
+        // Fire the click on mouse-up inside bounds, not immediately on
+        // press. This matches standard AppKit button behavior: the user
+        // can press, change their mind, drag away, and release without
+        // triggering an unwanted empty row. Tracking happens inline via
+        // the modal event loop so we don't have to juggle state between
+        // mouseDown / mouseDragged / mouseUp.
+        guard let window = self.window else { return }
+        var tracking = true
+        while tracking {
+            guard let next = window.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) else { break }
+            switch next.type {
+            case .leftMouseUp:
+                let point = self.convert(next.locationInWindow, from: nil)
+                if self.bounds.contains(point) {
+                    dropHandler?.addEmptyFilterRow()
+                }
+                tracking = false
+            default:
+                break
+            }
+        }
     }
 
     // MARK: - NSDraggingDestination
