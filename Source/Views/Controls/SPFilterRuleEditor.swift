@@ -131,9 +131,14 @@ import Cocoa
         let y = isFlipped ? point.y : (bounds.maxY - point.y)
         let index = Int(floor(y / rowH))
         guard index >= 0, index < numberOfRows else { return nil }
-        // Only top-level rows are drop targets; nested subrows (-1 when
-        // at the top) would need more nuanced tree mutation to replace.
+        // Drop target must be a top-level simple rule: a compound
+        // (AND / OR) row can't be "replaced" with a single expression,
+        // and a nested subrow would require tree-walking the serialized
+        // filter to map the visible index to a child index. Both cases
+        // are rejected; the user can use the drop box to append a new
+        // rule instead.
         guard parentRow(forRow: index) == -1 else { return nil }
+        guard rowType(forRow: index) == .simple else { return nil }
         return index
     }
 

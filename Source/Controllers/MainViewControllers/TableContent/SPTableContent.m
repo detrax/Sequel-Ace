@@ -3633,7 +3633,10 @@ static id configureDataCell(SPTableContent *tc, NSDictionary *colDefs, NSString 
 	topContainerRect.size.height = topContainerGivenHeight;
 
 	// this one should be inferable from the IB layout IMHO, but the OS gets it wrong
-	ruleEditorRect.size.height = topContainerGivenHeight - ruleEditorRect.origin.y;
+	// Clamp to zero so an unusually small container (e.g. right after
+	// the pane is first being laid out) doesn't produce a negative
+	// scroll-view height.
+	ruleEditorRect.size.height = MAX(topContainerGivenHeight - ruleEditorRect.origin.y, 0);
 
 	// Drop box spans the full width minus the button zone on the right
 	// (Apply Filters / Add Filter both live at x=579 width=111 in the
@@ -3647,10 +3650,15 @@ static id configureDataCell(SPTableContent *tc, NSDictionary *colDefs, NSString 
 	const CGFloat dropBoxRightReserve = 125;
 	const CGFloat dropBoxBottomPadding = 7;
 	const CGFloat dropBoxTopPadding = 5;
+	// Also clamp the drop box height against the container's actual
+	// allocation: if the parent pane is too short to honour the full
+	// reservation, we'd otherwise size the drop box beyond the
+	// container's bounds and render it overflowing.
+	CGFloat dropBoxVisibleHeight = MIN(dropBoxReserved, MAX(topContainerRect.size.height, 0));
 	NSRect dropBoxRect = NSMakeRect(dropBoxLeftPadding,
 	                                dropBoxBottomPadding,
 	                                MAX(topContainerRect.size.width - dropBoxLeftPadding - dropBoxRightReserve, 0),
-	                                MAX(dropBoxReserved - dropBoxBottomPadding - dropBoxTopPadding, 0));
+	                                MAX(dropBoxVisibleHeight - dropBoxBottomPadding - dropBoxTopPadding, 0));
 
 	if(animate) {
 		[NSAnimationContext beginGrouping];
@@ -4469,12 +4477,8 @@ static id configureDataCell(SPTableContent *tc, NSDictionary *colDefs, NSString 
 				}
 			}
 
-			NSString *cellValueType = [SPCellValuePasteboard pasteboardTypeRaw];
 			NSString *cellRowType = [SPCellValuePasteboard pasteboardRowTypeRaw];
 			NSMutableArray<NSPasteboardType> *types = [NSMutableArray arrayWithObjects:NSPasteboardTypeTabularText, NSPasteboardTypeString, nil];
-			if (cellValue) {
-				[types addObject:cellValueType];
-			}
 			if ([cellColumnName length]) {
 				[types addObject:cellRowType];
 			}
@@ -4482,9 +4486,6 @@ static id configureDataCell(SPTableContent *tc, NSDictionary *colDefs, NSString 
 
 			[pboard setString:tmp forType:NSPasteboardTypeString];
 			[pboard setString:tmp forType:NSPasteboardTypeTabularText];
-			if (cellValue) {
-				[pboard setString:cellValue forType:cellValueType];
-			}
 			if ([cellColumnName length]) {
 				// Dropped onto the rule editor, the plist alone is enough to
 				// synthesize a fully-populated filter rule (column + default

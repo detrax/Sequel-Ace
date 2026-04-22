@@ -72,13 +72,14 @@ import Cocoa
     override public func layout() {
         super.layout()
         let labelSize = label.intrinsicContentSize
-        // Center the label at its natural width so the full prompt
-        // reads fine on a reasonably-wide window. If the drop box is
-        // tighter, it will clip at the edges – `byClipping` above
-        // prevents an ellipsis from appearing mid-word.
-        let x = max((bounds.width - labelSize.width) / 2.0, 0)
+        // Center the label at its natural width, but clamp to the drop
+        // box's own bounds so a narrow container clips the text inside
+        // the dashed border instead of letting it spill outside.
+        // `byClipping` on the label prevents a mid-word ellipsis.
+        let labelWidth = min(labelSize.width, bounds.width)
+        let x = max((bounds.width - labelWidth) / 2.0, 0)
         let y = (bounds.height - labelSize.height) / 2.0
-        label.frame = NSRect(x: x, y: y, width: labelSize.width, height: labelSize.height)
+        label.frame = NSRect(x: x, y: y, width: labelWidth, height: labelSize.height)
     }
 
     override public var acceptsFirstResponder: Bool { false }

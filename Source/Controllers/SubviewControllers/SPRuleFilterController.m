@@ -1316,27 +1316,40 @@ static void _addIfNotNil(NSMutableArray *array, id toAdd);
 	// Pick a sensible default operator: "IS NULL" for a NULL cell,
 	// otherwise the first single-argument operator advertised for the
 	// column's type group (already "=" for number / string / date per
-	// ContentFilters.plist, "contains" for spatial).
+	// ContentFilters.plist, "contains" for spatial). The operator
+	// cache also contains separator / "Edit Filters…" entries which
+	// have a nil filter and nil name – skip those so they can never
+	// be chosen (messaging them into the serialized dict would crash).
 	[self _ensureValidOperatorCache:col];
 	NSArray *operators = [col operatorCache];
 	OpNode *chosen = nil;
 	if (isNull) {
+		// NULL cells must map to an IS NULL operator – any value-based
+		// fallback would turn "drag a NULL cell" into "filter where
+		// column = ''", which is silently wrong. If the column's type
+		// group doesn't advertise an IS NULL operator, refuse the drop
+		// so the user isn't handed an incorrect filter.
 		for (OpNode *op in operators) {
-			NSUInteger argc = [[[op filter] objectForKey:@"NumberOfArguments"] unsignedIntegerValue];
-			if (argc == 0 && [[[op filter] objectForKey:@"Clause"] rangeOfString:@"IS NULL" options:NSCaseInsensitiveSearch].location != NSNotFound) {
+			NSDictionary *filter = [op filter];
+			NSString *clause = [filter objectForKey:@"Clause"];
+			if (!filter || ![op name] || !clause) continue;
+			NSUInteger argc = [[filter objectForKey:@"NumberOfArguments"] unsignedIntegerValue];
+			if (argc == 0 && [clause rangeOfString:@"IS NULL" options:NSCaseInsensitiveSearch].location != NSNotFound) {
 				chosen = op;
 				break;
 			}
 		}
+		if (!chosen) return nil;
 	}
-	if (!chosen) {
+	else {
 		for (OpNode *op in operators) {
-			NSUInteger argc = [[[op filter] objectForKey:@"NumberOfArguments"] unsignedIntegerValue];
+			NSDictionary *filter = [op filter];
+			if (!filter || ![op name]) continue;
+			NSUInteger argc = [[filter objectForKey:@"NumberOfArguments"] unsignedIntegerValue];
 			if (argc == 1) { chosen = op; break; }
 		}
+		if (!chosen) return nil;
 	}
-	if (!chosen) chosen = [operators firstObject];
-	if (!chosen) return nil;
 
 	NSUInteger argc = [[[chosen filter] objectForKey:@"NumberOfArguments"] unsignedIntegerValue];
 	NSMutableArray *values = [NSMutableArray arrayWithCapacity:argc];
@@ -1348,7 +1361,7 @@ static void _addIfNotNil(NSMutableArray *array, id toAdd);
 
 - (BOOL)appendFilterForColumn:(NSString *)columnName value:(NSString *)value isNull:(BOOL)isNull
 {
-	if (![columns count]) return NO;
+	if (!enabled || ![columns count]) return NO;
 	NSDictionary *newRule = [self _makeSerializedRuleForColumn:columnName value:value isNull:isNull];
 	if (!newRule) return NO;
 
@@ -1384,7 +1397,7 @@ static void _addIfNotNil(NSMutableArray *array, id toAdd);
 
 - (BOOL)replaceFilterAtRow:(NSInteger)row forColumn:(NSString *)columnName value:(NSString *)value isNull:(BOOL)isNull
 {
-	if (row < 0 || ![columns count]) return NO;
+	if (!enabled || row < 0 || ![columns count]) return NO;
 	NSDictionary *newRule = [self _makeSerializedRuleForColumn:columnName value:value isNull:isNull];
 	if (!newRule) return NO;
 
@@ -1395,6 +1408,16 @@ static void _addIfNotNil(NSMutableArray *array, id toAdd);
 	}
 	else if (SerIsGroup(existing) && [[existing objectForKey:SerFilterGroupIsConjunction] boolValue]) {
 		NSArray *children = [existing objectForKey:SerFilterGroupChildren];
+		// Only handle flat AND groups here. Nested groups (e.g. AND
+		// wrapping an OR subgroup) break the 1:1 mapping between
+		// NSRuleEditor row index and the AND-children index; the rule
+		// editor inserts extra rows for the subgroup's own children,
+		// throwing off direct indexing. The drop target rejects in
+		// that case so the user can still append a fresh rule via the
+		// drop box.
+		for (NSDictionary *child in children) {
+			if (SerIsGroup(child)) return NO;
+		}
 		if ((NSUInteger)row >= [children count]) {
 			return NO;
 		}
@@ -1426,7 +1449,7 @@ static void _addIfNotNil(NSMutableArray *array, id toAdd);
 	// away from the click and feel wrong. `-addFilterExpression`
 	// (backing the top-right "Add Filter" button) keeps its original
 	// insert-at-0 semantics.
-	if (![columns count]) return;
+	if (!enabled || ![columns count]) return;
 
 	[self _doChangeToRuleEditorData:^{
 		NSInteger tailIndex = [self->filterRuleEditor numberOfRows];

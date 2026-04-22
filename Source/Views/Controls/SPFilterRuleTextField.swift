@@ -15,13 +15,6 @@ import Cocoa
 /// targets (`SPFilterRuleEditor`, `SPRuleFilterDropBox`) without
 /// duplicating them.
 @objc public class SPCellValuePasteboard: NSObject {
-    /// Reverse-DNS identifier of the value-only cell pasteboard type.
-    /// Payload is the cell's display string. Currently only written by
-    /// the drag source – no in-app consumer reads it today, but it's
-    /// kept on the pasteboard so any external tooling that learned to
-    /// recognise it from the prior revision keeps receiving the value.
-    @objc public static let pasteboardTypeRaw: String = "com.sequel-ace.cell-value"
-
     /// Reverse-DNS identifier of the cell-as-row pasteboard type. The
     /// payload is a property-list dictionary carrying enough context
     /// for a drop target to synthesize a full filter rule – column,
