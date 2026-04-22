@@ -4478,15 +4478,22 @@ static id configureDataCell(SPTableContent *tc, NSDictionary *colDefs, NSString 
 			}
 
 			NSString *cellRowType = [SPCellValuePasteboard pasteboardRowTypeRaw];
+			// Only advertise the filter payload if we actually resolved a
+			// real cell: a known column AND either a non-nil display value
+			// or a positively-identified NULL. A nil display value for a
+			// non-NULL cell (stale row after reload, out-of-range storage
+			// index) would otherwise synthesize a spurious `col = ''`
+			// filter on drop.
+			BOOL publishCellPayload = [cellColumnName length] && (cellIsNull || cellValue != nil);
 			NSMutableArray<NSPasteboardType> *types = [NSMutableArray arrayWithObjects:NSPasteboardTypeTabularText, NSPasteboardTypeString, nil];
-			if ([cellColumnName length]) {
+			if (publishCellPayload) {
 				[types addObject:cellRowType];
 			}
 			[pboard declareTypes:types owner:nil];
 
 			[pboard setString:tmp forType:NSPasteboardTypeString];
 			[pboard setString:tmp forType:NSPasteboardTypeTabularText];
-			if ([cellColumnName length]) {
+			if (publishCellPayload) {
 				// Dropped onto the rule editor, the plist alone is enough to
 				// synthesize a fully-populated filter rule (column + default
 				// operator + value).

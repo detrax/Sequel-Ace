@@ -1806,8 +1806,13 @@ static BOOL SerIsUntouchedStarterRule(NSDictionary *dict)
 	if (![SerFilterClassExpression isEqual:[dict objectForKey:SerFilterClass]]) return NO;
 	NSArray *values = [dict objectForKey:SerFilterExprValues];
 	if (![values isKindOfClass:[NSArray class]]) return NO;
+	// A row counts as "untouched starter" only if every argument is an
+	// empty NSString. Anything else (NSData, NSNull, NSNumber, or a
+	// non-empty string) is real data the user or a restore path put
+	// there – merging, not replacing, is the correct behavior.
 	for (id v in values) {
-		if ([v isKindOfClass:[NSString class]] && [(NSString *)v length]) return NO;
+		if (![v isKindOfClass:[NSString class]]) return NO;
+		if ([(NSString *)v length]) return NO;
 	}
 	return YES;
 }
