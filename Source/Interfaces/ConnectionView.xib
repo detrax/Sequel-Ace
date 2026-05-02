@@ -92,7 +92,7 @@
                             <rect key="frame" x="0.0" y="0.0" width="200" height="759"/>
                             <autoresizingMask key="autoresizingMask" heightSizable="YES"/>
                             <subviews>
-                                <searchField wantsLayer="YES" focusRingType="none" verticalHuggingPriority="750" id="SAFAV-SEARCH-FIELD">
+                                <searchField wantsLayer="YES" verticalHuggingPriority="750" id="SAFAV-SEARCH-FIELD">
                                     <rect key="frame" x="6" y="729" width="188" height="22"/>
                                     <autoresizingMask key="autoresizingMask" widthSizable="YES" flexibleMinY="YES"/>
                                     <searchFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" borderStyle="bezel" placeholderString="Search favorites" usesSingleLineMode="YES" bezelStyle="round" sendsSearchStringImmediately="YES" id="SAFAV-SEARCH-CELL">
@@ -105,14 +105,14 @@
                                     </connections>
                                 </searchField>
                                 <scrollView fixedFrame="YES" borderType="none" autohidesScrollers="YES" horizontalLineScroll="19" horizontalPageScroll="10" verticalLineScroll="19" verticalPageScroll="10" usesPredominantAxisScrolling="NO" translatesAutoresizingMaskIntoConstraints="NO" id="4910">
-                                    <rect key="frame" x="0.0" y="25" width="200" height="700"/>
+                                    <rect key="frame" x="0.0" y="25" width="200" height="695"/>
                                     <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                     <clipView key="contentView" drawsBackground="NO" id="cjP-S4-7Nz">
-                                        <rect key="frame" x="0.0" y="0.0" width="200" height="700"/>
+                                        <rect key="frame" x="0.0" y="0.0" width="200" height="695"/>
                                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                         <subviews>
                                             <tableView focusRingType="none" verticalHuggingPriority="750" allowsExpansionToolTips="YES" columnAutoresizingStyle="firstColumnOnly" tableStyle="sourceList" selectionHighlightStyle="sourceList" columnReordering="NO" columnSelection="YES" columnResizing="NO" autosaveColumns="NO" id="4913" customClass="SPFavoritesOutlineView">
-                                                <rect key="frame" x="0.0" y="0.0" width="200" height="700"/>
+                                                <rect key="frame" x="0.0" y="0.0" width="200" height="695"/>
                                                 <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                                 <size key="intercellSpacing" width="3" height="2"/>
                                                 <color key="backgroundColor" name="_sourceListBackgroundColor" catalog="System" colorSpace="catalog"/>

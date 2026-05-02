@@ -93,7 +93,14 @@ private let kSPQuickConnectImageWhite = "quick-connect-icon-white.pdf"
     /// Top-level groups have no disclosure triangle in source-list mode, so they must
     /// be re-expanded after every reload — otherwise filtering can leave the section
     /// collapsed when a previously-hidden group reappears.
+    ///
+    /// If a search filter is active, recomputes `visibleNodes` first so that any
+    /// underlying tree changes (rename, add, remove, reorder) made while the query
+    /// stayed unchanged are reflected in the filtered view.
     @objc func reloadData(in outlineView: NSOutlineView) {
+        if visibleNodes != nil {
+            rebuildVisibleNodes()
+        }
         outlineView.reloadData()
         let topLevelRowCount = outlineView.numberOfRows
         for row in 0..<topLevelRowCount {
