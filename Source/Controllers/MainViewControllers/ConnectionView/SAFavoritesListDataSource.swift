@@ -102,9 +102,12 @@ private let kSPQuickConnectImageWhite = "quick-connect-icon-white.pdf"
             rebuildVisibleNodes()
         }
         outlineView.reloadData()
-        let topLevelRowCount = outlineView.numberOfRows
-        for row in 0..<topLevelRowCount {
-            guard let item = outlineView.item(atRow: row) else { continue }
+        // Snapshot the top-level items BEFORE expanding any of them: each expandItem
+        // call inserts child rows, which would otherwise shift the indexes of the
+        // remaining top-level groups and cause the loop to expand newly-inserted
+        // child rows instead.
+        let topLevelItems = (0..<outlineView.numberOfRows).compactMap { outlineView.item(atRow: $0) }
+        for item in topLevelItems {
             outlineView.expandItem(item, expandChildren: false)
         }
     }
